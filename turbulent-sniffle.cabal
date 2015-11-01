@@ -6,7 +6,7 @@ cabal-version: >= 1.22
 data-files: index.html
 
 executable turbulent-sniffle
-  main-is: Main.hs
+  main-is: Main.lhs
   other-modules: Paths_turbulent_sniffle
   ghc-options: -Wall -threaded -rtsopts -with-rtsopts=-N
   build-depends:
