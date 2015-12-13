@@ -1,5 +1,5 @@
-A turbulent sniffle
-===
+File uploads in (a) Snap
+========================
 
 \begin{quote}
 “I was also sad, and thinking,\\
@@ -8,27 +8,22 @@ And I heard you sniffle-snuffle,\\
 And I saw your feathers ruffle.
 \end{quote}
 
-Introduction. Uploading files is common for web applications. Snap is
-a common framework in Haskell and has file uploading by default. This
-functionality is really well thought and good documented, but lacks a
-tutorial to show the basic idea of how to use it and integrate it to a
-Snap application. Add links to the documentation and to the two Stack
-Overflow questions related to file uploading with Snap.
+We recently had to add file uploads to a [Haskell][haskell] web
+application built with the [Snap][snap] framework. File uploads in
+Snap (that is, [`Snap.Util.FileUploads`][1]) have good documentation,
+but we thought it would be useful to write a tutorial about how to
+implement a basic file uploader. The idea is to write an application
+with an HTML form to upload multiple Haskell files (`.hs` or `.lhs`)
+that simply displays the contents of the uploaded files.
 
-We had to add file uploading to some Snap applications recently and
-decided that it would be a good idea to write a tutorial on how to
-create a form uploader. The idea is very simple: we'll build an
-application that consists of a simple HTML form to upload multiple
-Haskell files (hs or lhs). After submitting the files, the application
-simply reads and prints the contents of all uploaded files.
+This blog post was generated from a literate Haskell file that you can
+find in the [turbulent-sniffle][turbulent-sniffle] repository. All the
+code was tested with [LTS Haskell 3.18][lts] (and [Stackage Nightly
+2015-12-13][nightly]), that is, GHC 7.10.2, [snap-core
+0.9.8.0][snap-core], and [snap-server 0.9.5.1][snap-server].
 
-The code for this blog posts is based on a literate file which you can
-find in the turbulent-sniffle repository (link). As of writing, the
-code was tested with LTS Haskell 3.16, that is, snap-core 0.9.8.0 and
-snap-server 0.9.5.1. Add links to LTS, snap-core, and snap-server.
-
-The first thing we'll do is write a very simple HTML form to handle
-uploading files. Let's create a file index.html and add a form for this:
+The first thing we'll do is create an `index.html` file and add an
+HTML form to upload multiple files:
 
 ```html
 <form action="/" method="post" enctype="multipart/form-data">
@@ -37,19 +32,13 @@ uploading files. Let's create a file index.html and add a form for this:
 </form>
 ```
 
-This is a form with an input of type file with name files. The only
-additional thing we add is multiple to handle multiple files. We could
-make the input required or are more things, but we won't make any kind
-of validation here just to make Haskell handle any kind of
-problem. The only requirement to use Snap's functions is that we need
-to make this a post method and the enctype has to be
-multipart/form-data. Also, we choose / as the action for this posts,
-which is the only route for this application.
+This is just an HTML form with a file input that allows multiple
+files. We could make the input required, but we'll use Haskell to
+handle everything.
 
-The idea is to be able to use this in an existing application or
-something like that, so let's create a Cabal file to list
-dependencies. You can find a complete but minimal Cabal file in the
-repository, but let's make one here for completeness.
+In order to see exactly what we need for adding file uploads to an
+existing Haskell application, let's create a Cabal file. In this case,
+we'll call it `turbulent-sniffle.cabal`:
 
 ```
 name: turbulent-sniffle
@@ -58,24 +47,19 @@ build-type: Simple
 cabal-version: >= 1.22
 ```
 
-This particular package is called turbulent-sniffle and we don't need
-to change anything here, it should be given by the application that
-needs to upload files.
-
-We need to include data files because we're going to use HTML
-directly. You could use blaze or something else in a real application:
+We can now add the `index.html` file as a data file:
 
 ```
 data-files: index.html
 ```
 
-Next, let's add an executable.
+And create an executable component:
 
 ```
 executable turbulent-sniffle
   main-is: Main.lhs
   other-modules: Paths_turbulent_sniffle
-  ghc-options: -Wall -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall
   build-depends:
       base >= 4.8 && < 4.9
     , bytestring
@@ -86,21 +70,21 @@ executable turbulent-sniffle
   default-language: Haskell2010
 ```
 
-We're going to use only one file (Main.lhs) for the Haskell code, and
-we include Paths to have access to the HTML file. The only non-basic
-dependencies for the application will be snap-core and server.
-
-That's it, that's all the setup we need. If you cloned the repository
-or add the code and want to test, simply build and run the
-application. If using Stack:
+If you cloned the [turbulent-sniffle][turbulent-sniffle] repository,
+you can now build and run the application:
 
 ```
 $ stack build --exec turbulent-sniffle
 ```
 
-You can now go to http://localhost:8000/ and upload Haskell files. If
-you cloned this repository, you can upload the source code (Main.lhs)
-and read it instead.
+Or, to use Stackage Nightly instead of LTS Haskell:
+
+```
+$ stack build --resolver nightly-2015-12-13 --exec turbulent-sniffle
+```
+
+Go to <http://localhost:8000/> and try to upload a Haskell file such
+as `Main.lhs`.
 
 \begin{quote}
 To myself I sadly said,\\
@@ -109,8 +93,9 @@ That dear head has nothing on it!\\
 Ought she not to wear a bonnet?’
 \end{quote}
 
-Finally, we can move to the Haskell code. First, some language
-extensions and the module definition:
+Next, let's take a look at the Haskell code in `Main.lhs`. In this
+case, we only need to export the `main` function, which is probably
+not the case for a real application:
 
 > {-# LANGUAGE OverloadedStrings #-}
 > {-# LANGUAGE RecordWildCards #-}
@@ -120,24 +105,20 @@ extensions and the module definition:
 >  )
 >  where
 
-We only need to export the main function here to run the application,
-but that's not the best idea.
-
-Second, we need some imports, as follows. These are as explicit as
-possible so that there's no doubt where things come from.
+Let's take a look at the modules we'll use:
 
 > -- turbulent-sniffle
 > import qualified Paths_turbulent_sniffle as Paths
 >
 > -- base
-> import Control.Applicative ((<|>))
+> import qualified Control.Applicative as Applicative
 > import qualified Data.Either as Either
 > import Data.Int (Int64)
 > import qualified Data.Maybe as Maybe
 >
 > -- bytestring
 > import Data.ByteString (ByteString)
-> import qualified Data.ByteString.Char8 as ByteString
+> import qualified Data.ByteString.Char8 as ByteStringChar8
 >
 > -- directory
 > import qualified System.Directory as Directory
@@ -163,62 +144,60 @@ possible so that there's no doubt where things come from.
 > -- transformers
 > import qualified Control.Monad.IO.Class as MonadIO
 
-snap-server allows us to quickly serve an application with
-quickHttpServe. We can do that and simply print a ByteString to do
-some kind of hello, world for Snap:
+The [snap-server][snap-server] package allows us to quickly serve an
+application, as follows:
 
 < main :: IO ()
 < main =
 <   SnapServer.quickHttpServe
 <     (SnapCore.ifTop (SnapCore.writeBS "Behold a turbulent sniffle!"))
 
-Instead of writing a bytestring, we want something else to handle the
-top / route:
+This application would simply print a string, which is not what we
+want. Instead, let's add a handler for the top (`/`) route:
 
 > main :: IO ()
 > main =
 >   SnapServer.quickHttpServe (SnapCore.ifTop handleTop)
 
-handleTop will take care of a GET request to display the index.html
-file and a POST request to actually upload the files, that is, to
-handle the form submission. Thus, we specify this:
+The `handleTop` handler will take care of a GET request to display the
+`index.html` file and a POST request to upload files (that is, to
+handle the form submission):
 
 > handleTop :: Snap ()
 > handleTop =
 >   SnapCore.method GET handleTop'
->     <|> SnapCore.method POST handleFilesUpload
+>     Applicative.<|> SnapCore.method POST handleFilesUpload
 
-The GET request is handled by a function called handleTop' that gets
-the route for the index.html file using the Paths module and serves
-it:
+The GET request is handled by a function called `handleTop'` that gets
+the route for the `index.html` file using the `Paths` module and
+serves it:
 
 > handleTop' :: Snap ()
 > handleTop' = do
 >   indexHtml <- MonadIO.liftIO (Paths.getDataFileName "index.html")
 >   SnapFileServe.serveFile indexHtml
 
-That's all that happens when you first go to the / route (localhost).
-
-The real part is the handleFilesUpload function, which takes care of
-the form submission. Or not, this is just a function that calls
-another handler to actually handle the files uploading and either
-writes a reason for failure or the response (which we already said is
-the content of the uploaded files):
+The POST request is handled by the `handleFilesUpload` function, which
+calls a function named `handleFilesUpload'` and writes the response
+(either an error message or the contents of the uploaded files):
 
 > handleFilesUpload :: Snap ()
 > handleFilesUpload = do
 >   eitherFilesUpload <- handleFilesUpload'
 >   case eitherFilesUpload of
->     Left reason -> do
+>     Left badRequestReason -> do
 >       SnapCore.modifyResponse
 >         (SnapCore.setResponseStatus 400 "Bad Request")
->       SnapCore.writeBS (ByteString.pack reason)
+>       SnapCore.writeBS (ByteStringChar8.pack badRequestReason)
 >     Right response ->
 >       SnapCore.writeBS response
 
-The real file uploading functionality comes from the handleFileUploads
-function, which has good documentation (say something). We choose to
-return an Either to signal success or error:
+The `handleFilesUpload'` function uses Snap's [`handleFileUploads`][2]
+function, which reads uploaded files to a temporary directory based on
+general and per-file upload policies and uses a given handler to
+actually do something with the files. Here, we choose to return either
+a `String` (an error) or a `ByteString` (the contents of the uploaded
+files):
 
 > handleFilesUpload' :: Snap (Either String ByteString)
 > handleFilesUpload' = do
@@ -229,31 +208,23 @@ return an Either to signal success or error:
 >     partUploadPolicy
 >     handleFilesRead
 
-The handleFileUploads function takes four parameters: a temporary
-directory to temporarily save the uploaded files (Snap removes them
-after you do whatever you want to do with them), a general upload
-policy, a per file upload policy and a function to actually handle the
-uploaded files. Let's look at each of this in some detail.
+As temporary directory, we'll simply use the system's temporary
+directory.
 
-For temporary files, we'll use the temporary directory as returned by
-the directory package.
-
-The upload policy gives you more things. Say something about it. For
-this sample application, we'll use the default upload policy (say what
-it is):
+The general upload policy allows us to specify things like the maximum
+number of form inputs and the minimum upload rate. Snap provides a
+default upload policy, which is good enough for our application:
 
 > uploadPolicy :: UploadPolicy
 > uploadPolicy =
 >   SnapFileUploads.defaultUploadPolicy
 
-The part upload policy allows us to accept or reject a file. Given a
-part info (say what it has) we can see the content type, whether it's
-actually a file (we can click submit without choosing a file because
-the input is not required). In this case, we only want Haskell or
-literate Haskell files, and we require each file to be a file (we
-handle submission with no files). If our policies are met, then we
-allow files to be upladied with a maximum size. Else, we disallow the
-file:
+With the part or per-file upload policy, we allow or disallow each
+submitted file. Given a [`PartInfo`][3], we either disallow a file to
+be uploaded or allow it with a maximum size. A value of `PartInfo`
+gives us information such as the content type of the file and the name
+of the file (which is optional and will be `Nothing` if we submit no
+files):
 
 > partUploadPolicy
 >   :: PartInfo
@@ -267,8 +238,8 @@ file:
 >      else
 >        SnapFileUploads.disallow
 
-The maximum size is expressed like an Int64 in megabytes. We want one
-megabyte in this case, which is more than enough:
+We only allow Haskell files (`.hs` or `.lhs`) with a name (no empty
+submissions) with a maximum size of one megabyte:
 
 > maximumSize :: Int64
 > maximumSize =
@@ -277,62 +248,65 @@ megabyte in this case, which is more than enough:
 >     megabyte =
 >       2 ^ (20 :: Int)
 
-Note that the part upload policy is not the best and you'd want to do
-some extra work in a real application. As an example, you can take a
-PDF file and change its extension from pdf to hs or lhs. If the file
-is less than a megabyte, the part upload policy allows the file to be
-uploaded. Even better, the application works and displays the PDF, but
-that's not what you want.
+Note that this part upload policy is not very precise. We could rename
+a `turbulent-sniffle.pdf` file to `turbulent-sniffle.hs` and upload
+it. Also, the content type of a Haskell file could be submitted as
+`application/octet-stream`, which our upload policy would reject.
 
-Finally, the handleFilesRead function, the fourth parameter to Snap's
-function, takes a list of files and here we can specify what to do
-with them. This function takes a list of part infos and either a
-policy violation exception or the temporary file path to each
-file. We have to do something with each element in the list and return
-an Either:
+At last, we can implement the `handleFilesRead` and actually do
+something with the uploaded files. This handler takes a list of
+`PartInfo`s and file paths (or policy violations) and returns either
+an error or the contents of the files:
 
 > handleFilesRead
 >   :: [(PartInfo, Either PolicyViolationException FilePath)]
 >   -> Snap (Either String ByteString)
-> handleFilesRead pfs = do
->   sd <- mapM handleFileRead (fmap snd pfs)
->   case Either.partitionEithers sd of
+> handleFilesRead partInfos = do
+>   eitherContents <- mapM handleFileRead (fmap snd partInfos)
+>   case Either.partitionEithers eitherContents of
 >     ([], contents) ->
->       return (Right (ByteString.concat contents))
+>       return (Right (ByteStringChar8.concat contents))
 >     (errors, _) -> do
 >       SnapCore.logError
->         (ByteString.pack (unlines errors))
+>         (ByteStringChar8.pack (unlines errors))
 >       return (Left (head errors))
 
-In this case, we ignore the part infos and map a function over the
-policy exceptions or file paths to read the files. After that, we only
-return a success if all files were successfully uploaded (that is, if
-partitioning the resulting list of eithers has no lefts). In that
-case, we concatenate the content of all files. If there's at least one
-error, we log the error and return an error with the first error
-message. This is not very elaborate, so a different approach could be
-taken.
+We already used the `PartInfo`s to allow or disallow files, so we
+ignore it here and map over the file paths to get their contents using
+the `handleFileRead` function. If there are no policy violations in
+the results, we concatenate the contents of all files. Otherwise, we
+log the errors and return the error message for the first file that
+violated our upload policies.
 
-The last piece of code is a function to handle each individual
-file. This will simply take a file (or a policy violation exception)
-and read the file. Here's where your application could do something
-interesting with the file.
+Finally, let's define `handleFileRead` to read the contents of each
+file (if the file is rejected, we just show the policy violation
+message):
 
 > handleFileRead
 >   :: Either PolicyViolationException FilePath
 >   -> Snap (Either String ByteString)
-> handleFileRead =
->   either
->     (return . Left . show)
->     (MonadIO.liftIO . fmap Right . ByteString.readFile)
-
-That's it. The Snap framework is really great and the file uploading
-functionality has been designed with a lot of detail in mind. We hope
-that this tutorial is useful in addition to the official
-documentation.
+> handleFileRead eitherFile =
+>   case eitherFile of
+>     Left policyViolation ->
+>       return (Left (show policyViolation))
+>     Right file ->
+>       MonadIO.liftIO (fmap Right (ByteStringChar8.readFile file))
 
 \begin{quote}
 Witchy kitchy kitchy wee,\\
 Spikky wikky mikky bee,\\
 Chippy wippy chee!”
 \end{quote}
+&mdash;Edward Lear ([Nonsense Books](http://www.gutenberg.org/ebooks/13650))
+
+[haskell]: https://www.haskell.org/
+[lts]: https://www.stackage.org/lts-3.18
+[nightly]: https://www.stackage.org/nightly-2015-12-13
+[snap]: http://snapframework.com/
+[snap-core]: https://hackage.haskell.org/package/snap-core-0.9.8.0
+[snap-server]: https://hackage.haskell.org/package/snap-server-0.9.5.1
+[turbulent-sniffle]: https://github.com/stackbuilders/turbulent-sniffle
+
+[1]: https://hackage.haskell.org/package/snap-core-0.9.8.0/docs/Snap-Util-FileUploads.html
+[2]: https://hackage.haskell.org/package/snap-core-0.9.8.0/docs/Snap-Util-FileUploads.html#v:handleFileUploads
+[3]: https://hackage.haskell.org/package/snap-core-0.9.8.0/docs/Snap-Util-FileUploads.html#t:PartInfo

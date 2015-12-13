@@ -1,4 +1,8 @@
-# A turbulent sniffle
+# File uplads in (a) Snap
+
+A tutorial on how to implement a basic file uploader with Snap.
+
+## A turbulent sniffle
 
 Behold Edward Lear:
 
