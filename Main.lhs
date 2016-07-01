@@ -18,9 +18,9 @@ that simply displays the contents of the uploaded files.
 
 This blog post was generated from a literate Haskell file that you can
 find in the [turbulent-sniffle][turbulent-sniffle] repository. All the
-code was tested with [LTS Haskell 3.18][lts] (and [Stackage Nightly
-2015-12-13][nightly]), that is, GHC 7.10.2, [snap-core
-0.9.8.0][snap-core], and [snap-server 0.9.5.1][snap-server].
+code was tested with [LTS Haskell 6.5][lts], that is, GHC 7.10.3,
+[snap-core 0.9.8.0][snap-core], and [snap-server
+0.9.5.1][snap-server].
 
 The first thing we'll do is create an `index.html` file and add an
 HTML form to upload multiple files:
@@ -75,12 +75,6 @@ you can now build and run the application:
 
 ```
 $ stack build --exec turbulent-sniffle
-```
-
-Or, to use Stackage Nightly instead of LTS Haskell:
-
-```
-$ stack build --resolver nightly-2015-12-13 --exec turbulent-sniffle
 ```
 
 Go to <http://localhost:8000/> and try to upload a Haskell file such
@@ -300,8 +294,7 @@ Chippy wippy chee!”
 &mdash;Edward Lear ([Nonsense Books](http://www.gutenberg.org/ebooks/13650))
 
 [haskell]: https://www.haskell.org/
-[lts]: https://www.stackage.org/lts-3.18
-[nightly]: https://www.stackage.org/nightly-2015-12-13
+[lts]: https://www.stackage.org/lts-6.5
 [snap]: http://snapframework.com/
 [snap-core]: https://hackage.haskell.org/package/snap-core-0.9.8.0
 [snap-server]: https://hackage.haskell.org/package/snap-server-0.9.5.1
