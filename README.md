@@ -1,4 +1,4 @@
-# File uplads in (a) Snap
+# File uploads in (a) Snap
 
 A tutorial on how to implement a basic file uploader with Snap.
 
