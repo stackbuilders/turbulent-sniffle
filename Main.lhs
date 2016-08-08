@@ -18,9 +18,9 @@ that simply displays the contents of the uploaded files.
 
 This blog post was generated from a literate Haskell file that you can
 find in the [turbulent-sniffle][turbulent-sniffle] repository. All the
-code was tested with [LTS Haskell 6.5][lts], that is, GHC 7.10.3,
-[snap-core 0.9.8.0][snap-core], and [snap-server
-0.9.5.1][snap-server].
+code was tested with [LTS Haskell 6.10][lts], that is, GHC 7.10.3,
+[snap-core 1.0.0.0][snap-core], and [snap-server
+1.0.0.0][snap-server].
 
 The first thing we'll do is create an `index.html` file and add an
 HTML form to upload multiple files:
@@ -64,8 +64,9 @@ executable turbulent-sniffle
       base >= 4.8 && < 4.9
     , bytestring
     , directory
-    , snap-core >= 0.9 && < 0.10
-    , snap-server >= 0.9 && < 0.10
+    , snap-core >= 1.0 && < 1.1
+    , snap-server >= 1.0 && < 1.1
+    , text >= 1.2 && < 1.3
     , transformers
   default-language: Haskell2010
 ```
@@ -75,6 +76,16 @@ you can now build and run the application:
 
 ```
 $ stack build --exec turbulent-sniffle
+```
+
+Using the following `stack.yaml` file:
+
+```
+extra-deps:
+- io-streams-haproxy-1.0.0.0
+- snap-core-1.0.0.0
+- snap-server-1.0.0.0
+resolver: lts-6.10
 ```
 
 Go to <http://localhost:8000/> and try to upload a Haskell file such
@@ -92,7 +103,6 @@ case, we only need to export the `main` function, which is probably
 not the case for a real application:
 
 > {-# LANGUAGE OverloadedStrings #-}
-> {-# LANGUAGE RecordWildCards #-}
 >
 > module Main
 >  ( main
@@ -105,7 +115,7 @@ Let's take a look at the modules we'll use:
 > import qualified Paths_turbulent_sniffle as Paths
 >
 > -- base
-> import qualified Control.Applicative as Applicative
+> import Control.Applicative ((<|>))
 > import qualified Data.Either as Either
 > import Data.Int (Int64)
 > import qualified Data.Maybe as Maybe
@@ -125,7 +135,7 @@ Let's take a look at the modules we'll use:
 > import qualified Snap.Core as SnapCore
 > import qualified Snap.Util.FileServe as SnapFileServe
 > import Snap.Util.FileUploads
->   ( PartInfo(..)
+>   ( PartInfo
 >   , PartUploadPolicy
 >   , PolicyViolationException
 >   , UploadPolicy
@@ -134,6 +144,10 @@ Let's take a look at the modules we'll use:
 >
 > -- snap-server
 > import qualified Snap.Http.Server as SnapServer
+>
+> -- text
+> import Data.Text (Text)
+> import qualified Data.Text as Text
 >
 > -- transformers
 > import qualified Control.Monad.IO.Class as MonadIO
@@ -160,7 +174,7 @@ handle the form submission):
 > handleTop :: Snap ()
 > handleTop =
 >   SnapCore.method GET handleTop'
->     Applicative.<|> SnapCore.method POST handleFilesUpload
+>     <|> SnapCore.method POST handleFilesUpload
 
 The GET request is handled by a function called `handleTop'` that gets
 the route for the `index.html` file using the `Paths` module and
@@ -173,34 +187,34 @@ serves it:
 
 The POST request is handled by the `handleFilesUpload` function, which
 calls a function named `handleFilesUpload'` and writes the response
-(either an error message or the contents of the uploaded files):
+(either error messages or the contents of the uploaded files):
 
 > handleFilesUpload :: Snap ()
 > handleFilesUpload = do
 >   eitherFilesUpload <- handleFilesUpload'
->   case eitherFilesUpload of
->     Left badRequestReason -> do
+>   case Either.partitionEithers eitherFilesUpload of
+>     ([], contents) ->
+>       SnapCore.writeBS (ByteStringChar8.unlines contents)
+>     (errors, _) -> do
 >       SnapCore.modifyResponse
 >         (SnapCore.setResponseStatus 400 "Bad Request")
->       SnapCore.writeBS (ByteStringChar8.pack badRequestReason)
->     Right response ->
->       SnapCore.writeBS response
+>       SnapCore.writeText (Text.unlines errors)
 
 The `handleFilesUpload'` function uses Snap's [`handleFileUploads`][2]
 function, which reads uploaded files to a temporary directory based on
 general and per-file upload policies and uses a given handler to
-actually do something with the files. Here, we choose to return either
-a `String` (an error) or a `ByteString` (the contents of the uploaded
-files):
+actually do something with the files. Here, we choose to return a list
+of either a `Text` (an error) or a `ByteString` (the contents of an
+uploaded file):
 
-> handleFilesUpload' :: Snap (Either String ByteString)
+> handleFilesUpload' :: Snap [Either Text ByteString]
 > handleFilesUpload' = do
 >   temporaryDirectory <- MonadIO.liftIO Directory.getTemporaryDirectory
 >   SnapFileUploads.handleFileUploads
 >     temporaryDirectory
 >     uploadPolicy
 >     partUploadPolicy
->     handleFilesRead
+>     handleFileRead
 
 As temporary directory, we'll simply use the system's temporary
 directory.
@@ -223,10 +237,10 @@ files):
 > partUploadPolicy
 >   :: PartInfo
 >   -> PartUploadPolicy
-> partUploadPolicy PartInfo{..} =
->   if (partContentType == "text/x-haskell"
->        || partContentType == "text/x-literate-haskell")
->        && Maybe.isJust partFileName
+> partUploadPolicy partInfo =
+>   if (SnapFileUploads.partContentType partInfo == "text/x-haskell"
+>        || SnapFileUploads.partContentType partInfo == "text/x-literate-haskell")
+>        && Maybe.isJust (SnapFileUploads.partFileName partInfo)
 >      then
 >        SnapFileUploads.allowWithMaximumSize maximumSize
 >      else
@@ -247,44 +261,22 @@ a `turbulent-sniffle.pdf` file to `turbulent-sniffle.hs` and upload
 it. Also, the content type of a Haskell file could be submitted as
 `application/octet-stream`, which our upload policy would reject.
 
-At last, we can implement the `handleFilesRead` and actually do
-something with the uploaded files. This handler takes a list of
-`PartInfo`s and file paths (or policy violations) and returns either
-an error or the contents of the files:
-
-> handleFilesRead
->   :: [(PartInfo, Either PolicyViolationException FilePath)]
->   -> Snap (Either String ByteString)
-> handleFilesRead partInfos = do
->   eitherContents <- mapM handleFileRead (fmap snd partInfos)
->   case Either.partitionEithers eitherContents of
->     ([], contents) ->
->       return (Right (ByteStringChar8.concat contents))
->     (errors, _) -> do
->       SnapCore.logError
->         (ByteStringChar8.pack (unlines errors))
->       return (Left (head errors))
-
-We already used the `PartInfo`s to allow or disallow files, so we
-ignore it here and map over the file paths to get their contents using
-the `handleFileRead` function. If there are no policy violations in
-the results, we concatenate the contents of all files. Otherwise, we
-log the errors and return the error message for the first file that
-violated our upload policies.
-
-Finally, let's define `handleFileRead` to read the contents of each
-file (if the file is rejected, we just show the policy violation
-message):
+At last, we can implement the `handleFileRead` and actually do
+something with the uploaded files. This handler takes a PartInfo and a
+file path (or a policy violation) and returns either an error or the
+contents of an uploaded file. We already used the `PartInfo` to allow
+or disallow the file, so we ignore it here:
 
 > handleFileRead
->   :: Either PolicyViolationException FilePath
->   -> Snap (Either String ByteString)
-> handleFileRead eitherFile =
+>   :: PartInfo
+>   -> Either PolicyViolationException FilePath
+>   -> IO (Either Text ByteString)
+> handleFileRead _ eitherFile =
 >   case eitherFile of
 >     Left policyViolation ->
->       return (Left (show policyViolation))
+>       return (Left (SnapFileUploads.policyViolationExceptionReason policyViolation))
 >     Right file ->
->       MonadIO.liftIO (fmap Right (ByteStringChar8.readFile file))
+>       fmap Right (ByteStringChar8.readFile file)
 
 \begin{quote}
 Witchy kitchy kitchy wee,\\
@@ -294,12 +286,12 @@ Chippy wippy chee!”
 &mdash;Edward Lear ([Nonsense Books](http://www.gutenberg.org/ebooks/13650))
 
 [haskell]: https://www.haskell.org/
-[lts]: https://www.stackage.org/lts-6.5
+[lts]: https://www.stackage.org/lts-6.10
 [snap]: http://snapframework.com/
-[snap-core]: https://hackage.haskell.org/package/snap-core-0.9.8.0
-[snap-server]: https://hackage.haskell.org/package/snap-server-0.9.5.1
+[snap-core]: https://hackage.haskell.org/package/snap-core-1.0.0.0
+[snap-server]: https://hackage.haskell.org/package/snap-server-1.0.0.0
 [turbulent-sniffle]: https://github.com/stackbuilders/turbulent-sniffle
 
-[1]: https://hackage.haskell.org/package/snap-core-0.9.8.0/docs/Snap-Util-FileUploads.html
-[2]: https://hackage.haskell.org/package/snap-core-0.9.8.0/docs/Snap-Util-FileUploads.html#v:handleFileUploads
-[3]: https://hackage.haskell.org/package/snap-core-0.9.8.0/docs/Snap-Util-FileUploads.html#t:PartInfo
+[1]: https://hackage.haskell.org/package/snap-core-1.0.0.0/docs/Snap-Util-FileUploads.html
+[2]: https://hackage.haskell.org/package/snap-core-1.0.0.0/docs/Snap-Util-FileUploads.html#v:handleFileUploads
+[3]: https://hackage.haskell.org/package/snap-core-1.0.0.0/docs/Snap-Util-FileUploads.html#t:PartInfo
