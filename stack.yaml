@@ -1,5 +1,1 @@
-extra-deps:
-- io-streams-haproxy-1.0.0.0
-- snap-core-1.0.0.0
-- snap-server-1.0.0.0
-resolver: lts-6.10
+resolver: lts-7.8

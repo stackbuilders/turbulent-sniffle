@@ -10,7 +10,7 @@ executable turbulent-sniffle
   other-modules: Paths_turbulent_sniffle
   ghc-options: -Wall
   build-depends:
-      base >= 4.8 && < 4.9
+      base >= 4.9 && < 4.10
     , bytestring
     , directory
     , snap-core >= 1.0 && < 1.1
