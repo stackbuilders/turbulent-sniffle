@@ -17,3 +17,7 @@ Behold Edward Lear:
 > Witchy kitchy kitchy wee,  
 > Spikky wikky mikky bee,  
 > Chippy wippy chee!”
+
+## License
+
+Licensed under the MIT License.
